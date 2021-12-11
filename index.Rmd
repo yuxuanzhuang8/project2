@@ -46,73 +46,246 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Yuxuan Zhuang, yz24574
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+##### The data used in this project was "police_killings" in the R Package "fivethirtyeight."
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
+library(fivethirtyeight)
+colnames(police_killings)
+head(police_killings)
+police_killings %>% na.omit() -> polik
 
-# if your dataset needs tidying, do so here
+NE <- c("CT","ME","MA","NH","RI","VT","NJ","NY","PA")
+NE.ref <- c(NE)
 
-# any other code here
+MW <- c("IN","IL","MI","OH","WI","IA","KS","MN","MO","NE","ND","SD")
+MW.ref <- c(MW)
+
+S <- c("DE","DC","FL","GA","MD","NC","SC","VA","WV","AL","KY","MS","TN","AR","LA","OK","TX")
+S.ref <- c(S)
+
+W <- c("AZ","CO","ID","NM","MT","UT","NV","WY","AK","CA","HI","OR","WA")
+W.ref <- c(W)
+
+region.list <- list(
+  Northeast=NE.ref,
+  Midwest=MW.ref,
+  South=S.ref,
+  West=W.ref)
+polik$state_region <- sapply(polik$state, function(x)names(region.list)[grep(x,region.list)])
 ```
+
+##### The dataset "police_killings" is the raw data behind the article "Where Police Have Killed Americans In 2015" published in 2015. This is the link of that article: https://fivethirtyeight.com/features/where-police-have-killed-americans-in-2015/. In the dataset, there are 34 variables with 467 rows representing people who died from interactions with plolice in the year of 2015. 
+
+Below were the variables of interest (15 out of 34).
+
+    ‘gender’：Gender of deceased
+    ‘raceethnicity’：Race/ethnicity of deceased
+    ‘state’： State where incident occurred
+    'armed': How/whether deceased was armed
+    'share_white': Share of pop that is non-Hispanic white
+    'share_black': Share of pop that is black (alone, not in combination)
+    'share_hispanic': Share of pop that is Hispanic/Latino (any race)
+    'p_income': Tract-level median personal income
+    'h_income': Tract-level median household income
+    'county_income': County-level median household income
+    'comp_income': 'h_income' / 'county_income'
+    'pov': Tract-level poverty rate (official)
+    'urate': Tract-level unemployment rate
+    'college': Share of 25+ pop with BA or higher
 
 ### Cluster Analysis
 
 ```{R}
 library(cluster)
-# clustering code here
+library(ggplot2)
+set.seed(332)
+clust_dat <- polik %>% select(share_white,share_black,share_hispanic,p_income,h_income,county_income,comp_income,pov,urate,college)
+sil_width <- vector()
+for(i in 2:10){
+  kms <- kmeans(clust_dat, centers=i)
+  sil <- silhouette(kms$cluster,dist(clust_dat))
+  sil_width[i] <- mean(sil[,3])
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10) #suggests 2 clusters
 ```
 
-Discussion of clustering here
+```{r}
+pam1 <- clust_dat %>% scale %>% pam(k=2)
+pam1
+pamclust <- clust_dat %>% mutate(cluster=as.factor(pam1$clustering))
+pamclust %>% ggplot(aes(pov,urate,color=cluster))+geom_point()
+pamclust %>% group_by(cluster) %>% summarize_if(is.numeric,mean,na.rm=T)
+polik %>% slice(pam1$id.med)
+```
+
+```{r}
+polik %>% ggplot(aes(pov,urate,color=state_region))+geom_point(alpha=.8)
+pamclust %>% mutate(Region=polik$state_region) %>% ggplot(aes(pov, urate, color=Region, shape=cluster))+geom_point(size=2,alpha=.8)+ggtitle("pam")
+```
+No significant difference among regions was found. 
+
+
+```{r}
+final <- polik %>% select(share_white,share_black,share_hispanic,p_income,h_income,county_income,comp_income,pov,urate,college) %>% scale %>% as.data.frame
+final <- final %>% mutate(cluster=as.factor(pam1$clustering))
+library(GGally)
+ggpairs(final, aes(color=cluster))
+```
+
+```{r}
+pam1$silinfo$avg.width #average silhouette width=.251
+plot(pam1,which=2)
+```
+
+10 variables were used to perform PAM clustering. Sihouette width suggested 2 clusters.
+
+The average silhouette width = .251, which indicates the structure is weak and could be artificial. This might be caused by using too many numeric variables, which interfere with each other. 
+
+Between these 2 clusters, the greatest correlation value (0.829) was found between p_income (tract-level median personal income) and h_income (tract-level median household income), which is reasonable since household income includes personal income. The smallest correlation value (-.097) between comp_income ('h_income' / 'county_income') and county_income (county-level median household income), which was surprising since one variable is the denominator of another variable. This might imply the 'h-income' variable has a lot of variations (tract-level median household income) as well as the 'p_income' variable (tract-level median personal income) since they were strongly positively correlated with each other.
+
+The variable that distinguished these two clusters the most was share_white (share of pop that is non-Hispanic white). The variable that distinguished these two clusters the least was county_income (county-level median household income). 
     
     
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
+polik %>% select(share_white,share_black,share_hispanic,p_income,h_income,county_income,comp_income,pov,urate,college) %>% scale -> polik_nums
+rownames(polik_nums) <- polik$Name
+pca1 <- princomp(polik_nums)
+summary(pca1, loadings=T) #first 4 explains 85%
 ```
 
-Discussions of PCA here. 
+```{r}
+eigval <-  pca1$sdev^2 
+varprop=round(eigval/sum(eigval), 2)
+ggplot() + geom_bar(aes(y=varprop, x=1:10), stat="identity") + xlab("") + geom_path(aes(y=varprop, x=1:10)) + 
+  geom_text(aes(x=1:10, y=varprop, label=round(varprop, 2)), vjust=1, col="white", size=5) + 
+  scale_y_continuous(breaks=seq(0, .6, .2), labels = scales::percent) + 
+  scale_x_continuous(breaks=1:10)
+
+round(cumsum(eigval)/sum(eigval), 3) 
+```
+
+```{r}
+pkdf <- data.frame(PC1=pca1$scores[, 1], PC2=pca1$scores[, 2])
+ggplot(pkdf, aes(PC1, PC2)) + geom_point()
+library(factoextra)
+fviz_pca_biplot(pca1) #the number stands for the case number
+```
+
+
+PC1, PC2, and PC3 account for 77.4% of all of the variance. PC1, PC2, PC3, and PC4 account for 85.5% of all of the variance. I picked 4 PCs. 
+
+PC1 explained 48.7% of the total variance. PC1 demonstrated high tract-level median household income is along with high tract-level personal income, high comp_income, high share of population with college degree or higher, high share of non-Hispanic white population, high tract-level median county income, low share of black and hispanic population, low poverty rate, and low unemployment rate. Most of the police killing cases happened in locations with a high PC1. 
+
+PC2 explained 15.6% of the total variance. PC2 (uncorrelated with PC1) is a share_white (share of pop that is non-Hispanic white) and share_hispanic (share of pop that is Hispanic/Latino (any race)). Higher share of non-Hispanic white population means lower share of Hispanic/Latino (any race) population. High score on PC2 means high share of non-Hispanic white population and high 'comp_income'. 
+
+PC3 explained 13.1% of the total variance. PC3 (uncorrelated with PC1 or PC2) is a share_hispanic (share of pop that is Hispanic/Latino (any race)) and share_black (share of pop that is black) axis. High score on 'share_hispanic' means low 'share_black', low median personal income, low median household income, low county income, low poverty rate, and low share of population with a college degree or higher.
+
+PC4 explained .08% of the total variance. PC4 (uncorrelated with PC1, PC2, or PC3) is a 'county_income' and 'comp_income' axis. Higher county income is along with higher share of non-Hispanic white population, and it means lower 'comp_income' (household income / county income), low share of Hispanic population, etc. 
+
 
 ###  Linear Classifier
 
-```{R}
-# linear classifier code here
+```{r}
+polik %>% select(armed) %>% table()
+polik$ar <- polik$armed
+polik$ar %>% recode("Firearm"=1,"Disputed"=1,"Knife"=1,"Non-lethal firearm"=1,"Other"=1,"Vehicle"=1,"No"=0) -> polik$ar
+fit <- lm(ar~urate, data=polik, family="binomial") #using linear regression for classification
+score <- predict(fit)
+score %>% round(3)
+polik %>% mutate(score=score) %>% ggplot(aes(urate,ar))+geom_point(aes(color=score>.5))+geom_smooth(method="lm", se=F)+geom_hline(yintercept=.5, lty=2)
+class_diag(score,truth=polik$ar,positive=1) #AUC=.53, low accuracy
 ```
 
+
 ```{R}
-# cross-validation of linear classifier here
+set.seed(322)
+k=10
+
+data<-polik[sample(nrow(polik)),]
+folds<-cut(seq(1:nrow(data)),breaks=k,labels=F) 
+
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,] 
+  test<-data[folds==i,]
+  truth<-test$ar
+  fit<-lm(ar~pov,data=train,family="binomial")
+  probs<-predict(fit,newdata = test,type="response")
+  diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean)
 ```
 
-Discussion here
+I used linear regression for classification to try to predict whether deceased was armed (ar; armed=1, unarmed=0) from tract-level poverty rate (pov). AUC=.53 indicated this was not a good classification. 
+
+I used K-fold CV for cross validation. AUC=0.55 indicated the classfication did not work well in new data.
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+knn_fit <- knn3(factor(ar==1,levels=c("TRUE","FALSE"))~pov, data=polik, k=5)
+y_hat_knn <- predict(knn_fit,polik) %>% round(2)
+y_hat_knn
+table(truth=factor(polik$ar==1, levels=c("TRUE","FALSE")),prediction=factor(y_hat_knn[,1]>.5, levels=c("TRUE","FALSE")))
+class_diag(y_hat_knn[,1],polik$ar,positive=1) #AUC=.796, good accuracy 
 ```
 
 ```{R}
-# cross-validation of np classifier here
+set.seed(322)
+k=10
+
+data<-polik[sample(nrow(polik)),]
+folds<-cut(seq(1:nrow(polik)),breaks=k,labels=F)
+
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,] 
+  test<-data[folds==i,]
+  truth<-test$ar
+  
+  fit<-knn3(ar~pov,data=train)
+  probs<-predict(fit,newdata = test)[,2]
+  
+  diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean) #AUC=.52
 ```
 
-Discussion
+I used k Nearest Neighbors to try to predict whether deceased was armed (ar; armed=1, unarmed=0) from tract-level poverty rate (pov).AUC=.80 indicated this was a good classification. 
+
+I used K-fold CV for cross validation. AUC=0.52 indicated the classfication did not work well in new data.
 
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+fit <- train(ar~pov+college+urate+share_white, data=polik,method="rpart")
+library(rpart.plot)
+rpart.plot(fit$finalModel,digits=4)
+fit$finalModel
+
+polik %>% ggplot(aes(pov,college))+geom_jitter(aes(color=ar))
+
+table(actual=polik$ar,pred=predict(fit))[c(2,1)]
+
+class_diag(predict(fit,type="prob")[,2], polik$ar, positive="1")
+
 ```
 
 ```{R}
-# cross-validation of regression model here
+set.seed(322)
+cv <- trainControl(method="cv", number = 10, classProbs = T, savePredictions = T)
+fit <- train(ar ~ ., data=polik, trControl=cv, method="rpart")
+
+class_diag(fit$pred$malignant, fit$pred$obs, positive="malignant")
 ```
 
 Discussion
@@ -121,10 +294,12 @@ Discussion
 
 ```{R}
 library(reticulate)
+hi <- "Hello"
 ```
 
 ```{python}
-# python code here
+hi="world"
+print(r.hi,hi)
 ```
 
 Discussion
