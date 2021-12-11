@@ -77,16 +77,17 @@ region.list <- list(
   South=S.ref,
   West=W.ref)
 polik$state_region <- sapply(polik$state, function(x)names(region.list)[grep(x,region.list)])
+head(polik)
 ```
 
-##### The dataset "police_killings" is the raw data behind the article "Where Police Have Killed Americans In 2015" published in 2015. This is the link of that article: https://fivethirtyeight.com/features/where-police-have-killed-americans-in-2015/. In the dataset, there are 34 variables with 467 rows representing people who died from interactions with plolice in the year of 2015. 
+##### The dataset "police_killings" is the raw data behind the article "Where Police Have Killed Americans In 2015" published in 2015. This is the link of that article: https://fivethirtyeight.com/features/where-police-have-killed-americans-in-2015/. In the dataset, there are 34 variables with 467 rows representing people who died from interactions with plolice in the year of 2015. 410 observations in total were used in the analyses below. 
 
-Below were the variables of interest (15 out of 34).
+Below were the variables of interest (16 out of 34).
 
     ‘gender’：Gender of deceased
     ‘raceethnicity’：Race/ethnicity of deceased
-    ‘state’： State where incident occurred
-    'armed': How/whether deceased was armed
+    ‘state’： State where incident occurred. This variable was transformed into a category variable with 4 levels, Northeast, Midwest, South, and West.
+    'armed': How/whether deceased was armed. This variable was later transformed into a binary variable, 1=armed, 0=unarmed.
     'share_white': Share of pop that is non-Hispanic white
     'share_black': Share of pop that is black (alone, not in combination)
     'share_hispanic': Share of pop that is Hispanic/Latino (any race)
@@ -149,7 +150,32 @@ The average silhouette width = .251, which indicates the structure is weak and c
 Between these 2 clusters, the greatest correlation value (.829) was found between p_income (tract-level median personal income) and h_income (tract-level median household income), which is reasonable since household income includes personal income. The smallest correlation value (-.097) between comp_income ('h_income' / 'county_income') and county_income (county-level median household income), which was surprising since one variable is the denominator of another variable. This might imply the 'h-income' variable has a lot of variations (tract-level median household income) as well as the 'p_income' variable (tract-level median personal income) since they were strongly positively correlated with each other.
 
 The variable that distinguished these two clusters the most was share_white (share of pop that is non-Hispanic white). The variable that distinguished these two clusters the least was county_income (county-level median household income). 
-    
+
+
+```{r}
+library(cluster)
+dat2<-polik%>%mutate_if(is.character,as.factor)%>%column_to_rownames("name")%>%
+  select(-namelsad,-lawenforcementagency,-streetaddress,-month)
+
+gower1<-daisy(dat2,metric="gower")
+
+sil_width<-vector()
+for(i in 2:10){  
+  pam_fit <- pam(gower1, diss = TRUE, k = i)  
+  sil_width[i] <- pam_fit$silinfo$avg.width  
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10) #2 is the best
+
+pam3 <- pam(gower1,k=2,diss=T)
+pam3
+
+gower1%>%as.matrix%>%as.data.frame%>%rownames_to_column%>%
+  pivot_longer(-1,values_to="distance")%>%
+  filter(rowname!=name)%>%filter(distance%in%c(min(distance),max(distance)))%>%
+  distinct(distance,.keep_all = T) 
+```
+According to the gower dissimilarities, David Garcia and Natasha McKenna's case information (e.g. gender, race-ethnicity, state where incident occurred, cause of death, and how/whether deceased was armed) was different from each other the most. Eric Harris and Rodney Walker's case information were the most similar. 
+
     
 ### Dimensionality Reduction with PCA
 
@@ -183,14 +209,14 @@ PC1, PC2, and PC3 account for 77.4% of all of the variance. PC1, PC2, PC3, and P
 
 PC1 explained 48.7% of the total variance. PC1 demonstrated high tract-level median household income is along with high tract-level personal income, high comp_income, high share of population with college degree or higher, high share of non-Hispanic white population, high tract-level median county income, low share of black and hispanic population, low poverty rate, and low unemployment rate. Most of the police killing cases happened in locations with a high PC1. 
 
-PC2 explained 15.6% of the total variance. PC2 (uncorrelated with PC1) is a share_white (share of pop that is non-Hispanic white) and share_hispanic (share of pop that is Hispanic/Latino (any race)). Higher share of non-Hispanic white population means lower share of Hispanic/Latino (any race) population. High score on PC2 means high share of non-Hispanic white population and high 'comp_income'. 
+PC2 explained 15.6% of the total variance. PC2 (uncorrelated with PC1) is a share_white (share of pop that is non-Hispanic white) and share_hispanic (share of pop that is Hispanic/Latino (any race)) axis. Higher share of non-Hispanic white population means lower share of Hispanic/Latino (any race) population. High score on PC2 means high share of non-Hispanic white population, high 'comp_income', low 'share_hispanic', low 'h_income', and low 'county income'. 
 
-PC3 explained 13.1% of the total variance. PC3 (uncorrelated with PC1 or PC2) is a share_hispanic (share of pop that is Hispanic/Latino (any race)) and share_black (share of pop that is black) axis. High score on 'share_hispanic' means low 'share_black', low median personal income, low median household income, low county income, low poverty rate, and low share of population with a college degree or higher.
+PC3 explained 13.1% of the total variance. PC3 (uncorrelated with PC1 or PC2) is a share_hispanic (share of pop that is Hispanic/Latino (any race)) and share_black (share of pop that is black) axis. High score on 'share_hispanic' means high 'share_black', low 'share_black', low median personal income, low median household income, low county income, low poverty rate, and low share of population with a college degree or higher.
 
-PC4 explained .08% of the total variance. PC4 (uncorrelated with PC1, PC2, or PC3) is a 'county_income' and 'comp_income' axis. Higher county income is along with higher share of non-Hispanic white population, and it means lower 'comp_income' (household income / county income), low share of Hispanic population, etc. 
+PC4 explained .08% of the total variance. PC4 (uncorrelated with PC1, PC2, or PC3) is a 'county_income' and 'comp_income' axis. High county income is along with high share of non-Hispanic white population, and it means low 'comp_income' (household income / county income), low 'share_black', low 'share_hispanic', low 'p_income', low 'h_income', and low 'urate'.
 
 
-###  Linear Classifier
+###  Linear Classifier (Linear Regression)
 
 ```{r}
 polik %>% select(armed) %>% table()
@@ -225,9 +251,9 @@ summarize_all(diags,mean)
 
 I used linear regression for classification to try to predict whether deceased was armed (ar; armed=1, unarmed=0) from tract-level poverty rate (pov). AUC=.53 indicated this was not a good classification. 
 
-I used K-fold CV for cross validation. AUC=0.55 indicated the classfication did not work well in new data.
+I used K-fold CV for cross validation. AUC=.55 indicated the classfication did not work well in new data, but it was slightly higher than the training data. There was no overfitting.
 
-### Non-Parametric Classifier
+### Non-Parametric Classifier (k-nearest-neighbors)
 
 ```{R}
 library(caret)
@@ -261,7 +287,9 @@ summarize_all(diags,mean) #AUC=.52
 
 I used k Nearest Neighbors to try to predict whether deceased was armed (ar; armed=1, unarmed=0) from tract-level poverty rate (pov).AUC=.80 indicated this was a good classification. 
 
-I used K-fold CV for cross validation. AUC=0.52 indicated the classfication did not work well in new data.
+I used K-fold CV for cross validation. AUC=.52 which was lower than the AUC in the training data, indicating the classfication did not work well in new data and there might be an issue of overfitting. 
+
+The KNN nonparametric model had a worse cross-validation performance than the linear regression model due to a smaller AUC (.52<.55). 
 
 
 ### Regression/Numeric Prediction
@@ -298,18 +326,16 @@ MSE in the cross validation was significantly higher, MSE=19163491, meaning ther
 
 ```{R}
 library(reticulate)
-hi <- "Hello"
+ty <- "Thank you"
 ```
 
 ```{python}
-hi="world"
-print(r.hi,hi)
+semester="for a great semester!"
+print(r.ty,semester)
 ```
-I used "r." to refer to an r code in Python. 
+I used "r." to refer to an r code in python and ran the r and python codes together.
 
-### Concluding Remarks
 
-Include concluding remarks here, if any
 
 
 
