@@ -146,7 +146,7 @@ plot(pam1,which=2)
 
 The average silhouette width = .251, which indicates the structure is weak and could be artificial. This might be caused by using too many numeric variables, which interfere with each other. 
 
-Between these 2 clusters, the greatest correlation value (0.829) was found between p_income (tract-level median personal income) and h_income (tract-level median household income), which is reasonable since household income includes personal income. The smallest correlation value (-.097) between comp_income ('h_income' / 'county_income') and county_income (county-level median household income), which was surprising since one variable is the denominator of another variable. This might imply the 'h-income' variable has a lot of variations (tract-level median household income) as well as the 'p_income' variable (tract-level median personal income) since they were strongly positively correlated with each other.
+Between these 2 clusters, the greatest correlation value (.829) was found between p_income (tract-level median personal income) and h_income (tract-level median household income), which is reasonable since household income includes personal income. The smallest correlation value (-.097) between comp_income ('h_income' / 'county_income') and county_income (county-level median household income), which was surprising since one variable is the denominator of another variable. This might imply the 'h-income' variable has a lot of variations (tract-level median household income) as well as the 'p_income' variable (tract-level median personal income) since they were strongly positively correlated with each other.
 
 The variable that distinguished these two clusters the most was share_white (share of pop that is non-Hispanic white). The variable that distinguished these two clusters the least was county_income (county-level median household income). 
     
@@ -267,28 +267,32 @@ I used K-fold CV for cross validation. AUC=0.52 indicated the classfication did 
 ### Regression/Numeric Prediction
 
 ```{R}
-fit <- train(ar~pov+college+urate+share_white, data=polik,method="rpart")
-library(rpart.plot)
-rpart.plot(fit$finalModel,digits=4)
-fit$finalModel
-
-polik %>% ggplot(aes(pov,college))+geom_jitter(aes(color=ar))
-
-table(actual=polik$ar,pred=predict(fit))[c(2,1)]
-
-class_diag(predict(fit,type="prob")[,2], polik$ar, positive="1")
-
+fit <- lm(p_income~pov+college+urate+share_white, data=polik)
+yhat<-predict(fit)
+mean((polik$p_income-yhat)) #MSE is approximately equal to 0. 
 ```
 
 ```{R}
-set.seed(322)
-cv <- trainControl(method="cv", number = 10, classProbs = T, savePredictions = T)
-fit <- train(ar ~ ., data=polik, trControl=cv, method="rpart")
-
-class_diag(fit$pred$malignant, fit$pred$obs, positive="malignant")
+set.seed(332)
+k=5 
+data<-polik[sample(nrow(polik)),] 
+folds<-cut(seq(1:nrow(polik)),breaks=k,labels=F) 
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  fit<-lm(p_income~pov+college+urate+share_white,data=train)
+  yhat<-predict(fit,newdata=test)
+  diags<-mean((test$p_income-yhat)^2)
+}
+mean(diags) #MSE=19163491
 ```
 
-Discussion
+Predict personal median income from poverty rate, share of population with a college degree or higher, unemployment rate, and share of non-Hispanic white population.
+
+MSE in the original data was -5.532442e-12.
+
+MSE in the cross validation was significantly higher, MSE=19163491, meaning there was an overfitting. Overfitting can be solved by simplying the model.
 
 ### Python 
 
@@ -301,8 +305,7 @@ hi <- "Hello"
 hi="world"
 print(r.hi,hi)
 ```
-
-Discussion
+I used "r." to refer to an r code in Python. 
 
 ### Concluding Remarks
 
